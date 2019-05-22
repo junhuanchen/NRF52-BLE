@@ -23,6 +23,7 @@ uint8_t ADV_COMPLETE_LOCAL_NAME[] = {
 static BLEClientService WearfitService(Service_UUID);
 static BLEClientCharacteristic WearfitNotify(Notify_UUID);
 static BLEClientCharacteristic WearfitWrite(Write_UUID);
+static bool WearfitAlive = false;
 
 struct Wearfit
 {
@@ -58,7 +59,7 @@ struct Wearfit
     {
         (void)conn_handle;
         (void)reason;
-
+        WearfitAlive = false;
         Serial.println("Disconnected");
     }
 
@@ -114,7 +115,8 @@ struct Wearfit
         }
         else
         {
-            WearfitWrite.write("\xAB\x00\x04\xFF\xB1\x80\x01", 7); // 触发手环震动
+            set_ring_shake();
+            WearfitAlive = true;
         }
         Serial.println("Characteristic Found");
     }
@@ -204,12 +206,89 @@ struct Wearfit
         Serial.print("Optical data: ");
         // Serial.printf("Optical len %d data: %.*s\n", len, len, data);
         printHexList(data, len);
+
+        recv_forward(data, len);
+    }
+
+    static void recv_forward(uint8_t *buffer, uint8_t len)
+    {
+        if (buffer[4] == 0x31)
+        {
+            if (buffer[5] == 0x0A)
+            {
+                Serial.printf("H:%02X\n", buffer[6]); // 心率
+            }
+        }
+        if (buffer[4] == 0x91)
+        {
+            Serial.printf("B:%02X\n", buffer[7]); // 电量
+        }
+    }
+
+    static void get_heart_rate()
+    {
+        WearfitWrite.write("\xAB\x00\x04\xFF\x31\x0A\x01", 7);
+        Serial.write("get_heart_rate\n");
+    }
+
+    // static void get_battery()
+    // {
+    //     WearfitWrite.write("\xAB\x00\x03\xFF\xB2\x80", 6);
+    //     Serial.write("get_battery\n");
+    // }
+
+    static void set_ring_shake()
+    {
+        WearfitWrite.write("\xAB\x00\x04\xFF\xB1\x80\x01", 7);
+        Serial.write("set_ring_shake\n");
+    }
+
+    static void set_notice(char *info)
+    {
+        char buf[30] = "\xAB\x00\x05\xFF\x72\x80\x03\x02"; // 8
+        // WearfitWrite.write("\xAB\x00\x05\xFF\x72\x80\x09\x01", 8); // 0
+        sprintf(buf + 8, "%s", info);
+        buf[2] = buf[2] + strlen(info);
+        WearfitWrite.write(buf, 8 + strlen(info)); // 0
+        // printHexList((uint8_t *)buf, 8 + strlen(info));
+        Serial.write("set_notice\n");
     }
 
     static void unit_test()
     {
-        delay(1000);
-        WearfitWrite.write("\xAB\x00\x04\xFF\xB1\x80\x01", 7); // 触发手环震动
+        delay(5000);
+        if (WearfitAlive)
+        {
+            // WearfitWrite.write("\xAB\x00\x04\xFF\xB1\x80\x01", 7);
+            
+            // WearfitWrite.write("\xAB\x00\x04\xFF\x32\x80\x01", 7);
+
+            set_notice("开始测量");
+
+            // {
+
+            //     static int count = 0, state = 0;
+            //     tm += 5;
+            //     switch (state)
+            //     {
+            //         case 0:
+            //             WearfitWrite.write("\xAB\x00\x04\xFF\x32\x80\x01", 7); // 启动测量
+            //             state = 1;
+            //             break;
+                
+            //         case 1:
+            //             if (tm == 60)
+            //             {
+            //                 WearfitWrite.write("\xAB\x00\x04\xFF\x32\x80\x00", 7); // 停止测量
+            //                 state = 0;
+            //             }
+            //             break;
+                
+            //     }
+            // }
+            
+        }
+        // WearfitWrite.write("\xAB\x00\x04\xFF\x31\x09\x01", 7);
     }
 
     void loop()
@@ -226,7 +305,7 @@ struct Wearfit
             if ('B' == Serial.read())
             {
                 WearfitWrite.write("\xAB\x00\x03\xFF\xB2\x80", 6);
-            }\
+            }
 
             if ('F' == Serial.read())
             { 
