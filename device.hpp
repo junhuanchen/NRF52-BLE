@@ -79,7 +79,7 @@ struct Wearfit
             Serial.println("No Service Found");
 
             // disconect since we couldn't find service
-            Bluefruit.Central.disconnect(conn_handle);
+            Bluefruit.disconnect(conn_handle);
 
             return;
         }
@@ -91,7 +91,7 @@ struct Wearfit
         {
             // Measurement chr is mandatory, if it is not found (valid), then disconnect
             Serial.println("No Characteristic Found. Characteristic is mandatory but not found. ");
-            Bluefruit.Central.disconnect(conn_handle);
+            Bluefruit.disconnect(conn_handle);
             return;
         }
         Serial.println("Characteristic Found");
@@ -110,7 +110,7 @@ struct Wearfit
         if (!WearfitWrite.discover())
         {
             Serial.println("No Characteristic Found. Characteristic is mandatory but not found.");
-            Bluefruit.Central.disconnect(conn_handle);
+            Bluefruit.disconnect(conn_handle);
             return;
         }
         else
@@ -129,27 +129,77 @@ struct Wearfit
 
         uint8_t buffer[BLE_GAP_ADV_SET_DATA_SIZE_MAX] = {0};
 
-        Serial.print("Parsing report for Local Name ... ");
-        if (Bluefruit.Scanner.parseReportByType(report, BLE_GAP_AD_TYPE_COMPLETE_LOCAL_NAME, buffer, sizeof(buffer)))
+        /* Display the timestamp and device address */
+        if (report->type.scan_response)
         {
-            Serial.println("Found Local Name");
-            Serial.printf("%14s %s\n", "Local Name:", buffer);
+            Serial.printf("[SR%10d] Packet received from ", millis());
+        }
+        else
+        {
+            Serial.printf("[ADV%9d] Packet received from ", millis());
+        }
+        // MAC is in little endian --> print reverse
+        Serial.printBufferReverse(report->peer_addr.addr, 6, ':');
+        Serial.print("\n");
 
-            Serial.print("   Local Name data: ");
-            printHexList(buffer, BLE_GAP_ADV_SET_DATA_SIZE_MAX);
+        /* Raw buffer contents */
+        Serial.printf("%14s %d bytes\n", "PAYLOAD", report->data.len);
+        if (report->data.len)
+        {
+            Serial.printf("%15s", " ");
+            Serial.printBuffer(report->data.p_data, report->data.len, '-');
+            Serial.println();
+        }
 
-            Serial.print("Determining Local Name Match ... ");
-            if (!memcmp(buffer, ADV_COMPLETE_LOCAL_NAME, sizeof(ADV_COMPLETE_LOCAL_NAME)))
+        /* RSSI value */
+        Serial.printf("%14s %d dBm\n", "RSSI", report->rssi);
+
+        /* Adv Type */
+        Serial.printf("%14s ", "ADV TYPE");
+        if (report->type.connectable)
+        {
+            Serial.print("Connectable ");
+        }
+        else
+        {
+            Serial.print("Non-connectable ");
+        }
+
+        if (report->type.directed)
+        {
+            Serial.println("directed");
+        }
+        else
+        {
+            Serial.println("undirected");
+        }
+
+        // 此处做设备地址的绑定和判断 4B:FC:1B:0C:77:99 // F6:37:07:D8:2A:F8
+        Serial.printBuffer(report->peer_addr.addr, 6, '-'), Serial.println(" mac\n");
+        if (0 == memcmp((const char *)report->peer_addr.addr, "\xF8\x2A\xD8\x07\x37\xF6", 6)) // F8-2A-D8-07-37-F6
+        {
+            Serial.print("Parsing report for Local Name ... ");
+            if (Bluefruit.Scanner.parseReportByType(report, BLE_GAP_AD_TYPE_COMPLETE_LOCAL_NAME, buffer, sizeof(buffer)))
             {
-                Serial.println("Local Name Match!");
+                Serial.println("Found Local Name");
+                Serial.printf("%14s %s\n", "Local Name:", buffer);
 
-                Serial.println("Connecting to Peripheral ... ");
-                Bluefruit.Central.connect(report);
-            }
-            else
-            {
-                Serial.println("No Match");
-                Bluefruit.Scanner.resume(); // continue scanning
+                Serial.print("   Local Name data: ");
+                printHexList(buffer, BLE_GAP_ADV_SET_DATA_SIZE_MAX);
+
+                Serial.print("Determining Local Name Match ... ");
+                if (!memcmp(buffer, ADV_COMPLETE_LOCAL_NAME, sizeof(ADV_COMPLETE_LOCAL_NAME)))
+                {
+                    Serial.println("Local Name Match!");
+
+                    Serial.println("Connecting to Peripheral ... ");
+                    Bluefruit.Central.connect(report);
+                }
+                else
+                {
+                    Serial.println("No Match");
+                    Bluefruit.Scanner.resume(); // continue scanning
+                }
             }
         }
         else
@@ -164,11 +214,12 @@ struct Wearfit
 
     void setup()
     {
-        Serial.begin(9600);
+        Serial.setPins(26, 25);
+        Serial.begin(115200);
         while (!Serial)
             delay(10); // for nrf52840 with native usb
 
-        Serial.println("Wearfit Central Example");
+        Serial.println("Zhiwu Wearfit Central");
         Bluefruit.begin(0, 1);
         Bluefruit.setName("Wearfit Central");
 
@@ -196,8 +247,6 @@ struct Wearfit
         Bluefruit.Scanner.useActiveScan(true); // required for SensorTag to reveal the Local Name in the advertisement.
         Bluefruit.Scanner.start(0);            // 0 = Don't stop scanning after n seconds
 
-
-        
         Scheduler.startLoop(unit_test);
     }
 
@@ -256,14 +305,16 @@ struct Wearfit
 
     static void unit_test()
     {
-        delay(5000);
+        delay(10000);
+        // set_notice("test");
+        set_notice("开始测量");
         if (WearfitAlive)
         {
             // WearfitWrite.write("\xAB\x00\x04\xFF\xB1\x80\x01", 7);
-            
+
             // WearfitWrite.write("\xAB\x00\x04\xFF\x32\x80\x01", 7);
 
-            set_notice("开始测量");
+            //set_notice("开始测量");
 
             // {
 
@@ -275,7 +326,7 @@ struct Wearfit
             //             WearfitWrite.write("\xAB\x00\x04\xFF\x32\x80\x01", 7); // 启动测量
             //             state = 1;
             //             break;
-                
+
             //         case 1:
             //             if (tm == 60)
             //             {
@@ -283,10 +334,9 @@ struct Wearfit
             //                 state = 0;
             //             }
             //             break;
-                
+
             //     }
             // }
-            
         }
         // WearfitWrite.write("\xAB\x00\x04\xFF\x31\x09\x01", 7);
     }
@@ -308,7 +358,7 @@ struct Wearfit
             }
 
             if ('F' == Serial.read())
-            { 
+            {
                 WearfitWrite.write("\xAB\x00\x03\xFF\x71\x80\x00", 7);
             }
 
