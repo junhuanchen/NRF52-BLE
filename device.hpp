@@ -277,7 +277,7 @@ struct Wearfit
         {
             get_heart_rate();
 
-            delay(2000);
+            delay(5000);
             if (WearfitAlive)
             {
                 // WearfitWrite.write("\xAB\x00\x04\xFF\xB1\x80\x01", 7);
